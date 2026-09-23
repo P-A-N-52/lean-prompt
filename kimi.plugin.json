@@ -1,15 +1,22 @@
 {
   "name": "lean-prompt",
-  "version": "0.3.0",
-  "description": "Shrink the resident prompt: heavy tool schemas move to specialist sub-agents, low-frequency session-state features are cut, knowledge moves to on-demand skills. Ships a balanced profile (default) and a minimal router profile.",
-  "keywords": ["prompt", "context", "progressive-disclosure", "token-budget"],
+  "version": "0.4.0",
+  "description": "Keep every tool callable while shrinking the resident prompt: MCP servers are fronted by the lean-proxy meta-tools (catalog/describe/call) instead of every upstream schema being resident, knowledge moves to on-demand skills, and sub-agents stay available for output isolation.",
+  "keywords": ["prompt", "context", "progressive-disclosure", "token-budget", "mcp-proxy"],
   "license": "MIT",
   "agents": "./agents/",
   "skills": "./skills/",
   "commands": "./commands/",
+  "mcpServers": {
+    "lean": {
+      "command": "python3",
+      "args": ["./server.py"],
+      "cwd": "./services/lean-proxy"
+    }
+  },
   "interface": {
     "displayName": "Lean Prompt",
-    "shortDescription": "Progressive disclosure for tools and knowledge",
-    "longDescription": "Removes MCP tool schemas, media reading and low-frequency session-state tools (Cron*/Goal*/WaitFor) from the main agent's resident prompt, routing that work to specialist sub-agents; ships a minimal router profile for delegation-only sessions and a prompt-audit skill that measures what actually occupies your context."
+    "shortDescription": "Full tool capability, compressed resident schemas",
+    "longDescription": "Fronts your MCP servers with lean-proxy, which keeps three compact meta-tools (catalog/describe/call) resident instead of every upstream tool declaration; every tool stays callable. Ships a full-fidelity main agent (default), specialist sub-agents for output isolation, an experimental minimal router profile, and a prompt-audit skill that measures what actually occupies your context."
   }
 }

@@ -1,7 +1,7 @@
 ---
 name: web-researcher
-description: Researches questions on the web — searches, reads pages, and returns distilled findings with source links, keeping long page content out of the caller's context
-whenToUse: When a task needs up-to-date information or reading multiple web pages
+description: Optional research isolator — searches the web, reads pages and returns distilled findings with source links, keeping long page content out of the caller's context
+whenToUse: When a task would read several long pages at once and only the distilled findings are needed
 tools:
   - WebSearch
   - FetchURL
