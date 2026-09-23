@@ -1,7 +1,7 @@
 ---
 name: media-analyst
-description: Reads images and videos and returns textual descriptions or answers about them, keeping media payloads out of the caller's context
-whenToUse: When the task involves understanding an image or video file
+description: Optional media isolator — reads images and videos and returns textual descriptions or answers about them, keeping large media payloads out of the caller's context
+whenToUse: When media would fill the caller's context and only the answer is needed (the main agent can also read media directly)
 tools:
   - ReadMediaFile
   - Read

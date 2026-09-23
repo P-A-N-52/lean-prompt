@@ -1,68 +1,58 @@
 ---
 name: agent
-description: Lean main agent — MCP schemas, media reading and batch orchestration are delegated to specialist sub-agents; low-frequency session-state features (Cron*/Goal*/WaitFor) are cut
+description: Full-fidelity main agent — every built-in tool stays callable; MCP servers are fronted by the lean-proxy meta-tools (catalog/describe/call), so their long schemas are not resident twice
 override: true
 disallowedTools:
-  # MCP tool schemas are usually the largest resident block. Delegating them to
-  # `mcp-worker` costs a sub-agent spawn only when MCP work actually happens.
-  - mcp__*
-  - ReadMediaFile
-  # Batch orchestration is low-frequency; a single `Agent` delegation stays.
-  - AgentSwarm
-  # Tower orchestration tools are hidden by the default profile, but a custom
-  # agent file re-exposes them (measured: 11 tools, 16,601 chars under
-  # prompt_audit.py's compact-JSON unit). Exact names only — wildcards match
-  # MCP tools exclusively. Remove these entries if you use /tower.
-  - TowerFinding
-  - TowerInbox
-  - TowerInit
-  - TowerMerge
-  - TowerMission
-  - TowerPlan
-  - TowerReview
-  - TowerSend
-  - TowerSpawn
-  - TowerStatus
-  - TowerTeardown
-  # --- Session-state features cut in v0.3. There is no delegation path for
-  # --- them: they act on the calling session, so denying them removes the
-  # --- feature outright. Each entry says what it did and how to add it back.
-  # Creates a scheduled prompt (`/cron` style reminder). Add back: delete this line.
-  - CronCreate
-  # Cancels a scheduled prompt. Add back: delete this line.
-  - CronDelete
-  # Lists scheduled prompts. Add back: delete this line.
-  - CronList
-  # Defines a goal-mode objective (`/goal`). Add back: delete this line.
-  - CreateGoal
-  # Reads the current goal-mode objective. Add back: delete this line.
-  - GetGoal
-  # Sets the goal's token/time budget. Add back: delete this line.
-  - SetGoalBudget
-  # Updates goal status or progress. Add back: delete this line.
-  - UpdateGoal
-  # Waits for background tasks without ending the turn. Add back: delete this line.
-  - WaitFor
-  # --- Kept on purpose: plan mode and task/question control are used often
-  # --- enough that cutting them costs more than their schemas save.
-  # EnterPlanMode / ExitPlanMode / AskUserQuestion / TodoList / TaskList /
-  # TaskOutput / TaskStop all stay loaded.
+  # Only the upstream servers that lean-proxy wraps are excluded — see the
+  # `upstreams` block of services/lean-proxy/config.json. Their full declarations
+  # would otherwise be resident next to the proxy that already serves the same
+  # tools (and the routing rules below send every MCP call through the proxy).
+  # Every tool of theirs stays callable through the proxy's `call()`, so no
+  # capability is lost — only the duplicate schema. Move an upstream behind the
+  # proxy by adding its name here too.
+  #
+  # Non-MCP names are matched by exact membership and cannot be wildcarded
+  # (`Tower*` matches nothing), so this is the only pattern-shaped entry here.
+  # Nothing else is excluded: Cron*/Goal*/WaitFor, AgentSwarm, ReadMediaFile and
+  # the Tower orchestration tools are all resident, as they were before v0.3.
+  - mcp__kimi-cu__*
 ---
 
 ${base_prompt}
 
 # Context budget rules
 
-This runtime keeps the resident prompt small: heavy tool schemas are deliberately not loaded here. Follow these routing rules:
+MCP tools do not sit in this prompt: the lean-proxy server keeps three meta-tools
+resident instead of every upstream's declaration.
 
-- Any task that needs an MCP tool (browser automation, desktop control, data queries, anything named `mcp__*`) — delegate to the `mcp-worker` sub-agent. Give it a self-contained task description and ask for a compressed conclusion, not raw tool output.
-- Do not call `select_tools` to reach MCP tools. This profile removes `mcp__*` from the loadable catalogue as well as from the resident list, so `select_tools` can only answer "Unknown tool". Delegation is the way in.
-- Use `mcp-worker` and `media-analyst` rather than the built-in `coder` profile for that work: `coder` carries its own `mcp__*` and `ReadMediaFile` schemas and will return raw tool output instead of a distilled result.
-- Image or video understanding — delegate to the `media-analyst` sub-agent with the file path and the question.
-- Multi-source web research that will read several long pages — delegate to the `web-researcher` sub-agent and ask for distilled findings with source links. (Direct `WebSearch`/`FetchURL` is still available for a single quick lookup.)
-- A task that would fan out into many parallel agents — do it with a few sequential `Agent` calls instead of `AgentSwarm`.
-- When a task needs a detailed procedure or spec, invoke the matching Skill instead of pasting long documents into the conversation.
-- When the user asks how large the prompt/context is or what occupies it, use the `prompt-audit` skill.
-- Scheduling/reminders, goal mode and waiting on background tasks are deliberately **not loaded** here — they act on this session and cannot be delegated. If the user asks for one, say the feature is not available in this profile and point at the README's 档位 table instead of improvising a workaround.
+- Reach **any** MCP tool through the proxy, in this order: `catalog()` lists every
+  upstream tool with a one-line summary, `describe(name)` returns that tool's full
+  description and input schema, `call(name, arguments)` runs it and returns the
+  upstream result unchanged. Call `catalog()` first; `describe()` before `call()`
+  whenever the arguments are not obvious. Never guess a tool name or an argument
+  shape — an unknown name comes back as an error listing the available ones.
+- The servers the proxy wraps are denied here in their direct form, so their
+  `mcp__<server>__*` tools are resident nowhere and are not loadable either —
+  `select_tools` answers `Unknown tool` for them (measured). The proxy's own
+  meta-tools are already resident, so call them directly.
+- If a delegated MCP task returns raw output larger than you need — screenshots,
+  full AX trees, bulk queries — hand it to the `mcp-worker` sub-agent and ask for
+  a compressed conclusion. That is an output-isolation choice, not the access
+  path: the proxy already gives you the tools.
+- Image and video are readable directly (`ReadMediaFile`). Delegate to
+  `media-analyst` when the media is long or you want the payload kept out of this
+  context entirely.
+- Multi-page web research that would pull several long pages into this context:
+  delegate to `web-researcher` for distilled findings with source links. Direct
+  `WebSearch`/`FetchURL` stays fine for a single quick lookup.
+- Tasks that fan out into many independent agents: `AgentSwarm` is resident here;
+  a few sequential `Agent` calls are still cheaper when there are only two or three.
+- When a task needs a detailed procedure or spec, invoke the matching Skill
+  instead of pasting long documents into the conversation.
+- When the user asks how large the prompt/context is or what occupies it, use the
+  `prompt-audit` skill.
+- Scheduling/reminders (`Cron*`), goal mode (`Goal*`) and `WaitFor` act on **this**
+  session, so they are resident and work directly — a sub-agent cannot stand in
+  for them.
 
 Delegation has its own token cost. For a single trivial lookup that your remaining tools can handle, answer directly instead of spawning a sub-agent.
