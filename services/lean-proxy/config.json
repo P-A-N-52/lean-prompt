@@ -1,0 +1,12 @@
+{
+  "timeout_seconds": 60,
+  "startup_timeout_seconds": 15,
+  "startup_wait_seconds": 25,
+  "description_limit": 120,
+  "upstreams": {
+    "kimi-cu": {
+      "command": "/Applications/KimiCU.app/Contents/MacOS/kimi-cu",
+      "args": ["mcp", "-s", "user"]
+    }
+  }
+}
