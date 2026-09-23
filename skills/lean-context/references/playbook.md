@@ -30,15 +30,41 @@ Concretely:
 - Root `AGENTS.md` should read like a table of contents: one line per rule with a pointer (`docs/style.md`, `skills/…`). Content placed here is injected into every session's prompt — it is not retrieved per task.
 - Keep `SKILL.md` bodies short; move detail into sibling files and reference them with `${KIMI_SKILL_DIR}`.
 - Plugin `systemPrompt` / `systemPromptPath` is resident text (32 KB per field, 64 KB per prompt build across plugins). `sessionStart.skill` loads a skill into every session — both are anti-patterns for anything long.
-- A skill can chain: body → reference file → deeper file. Three levels is plenty.
+- Reference files stay **one level deep** from `SKILL.md`. Anthropic's Agent Skills best practices ask for exactly that: a model that meets a nested reference may preview it with `head -100` instead of reading it whole, and comes back with incomplete information. If a reference needs more detail, deepen the file, not the chain.
 
 ## 3. Move tool schemas out of the main agent
 
-Every tool exposed to an agent costs its `name + description + parameter schema` on every request. Two levers:
+Every tool exposed to an agent costs its `name + description + parameter schema` on every request. Two levers, in this order:
 
-### 3.1 Delegate to specialist sub-agents
+### 3.1 Defer MCP tools (native, preferred)
 
-The main agent drops the tool (`disallowedTools`), and a custom sub-agent carries it. The schema then only occupies the sub-agent's own context, only when delegated to:
+Kimi Code CLI keeps an MCP server's tool schemas out of the top-level `tools[]` and loads them on demand through `select_tools`. This is the cheap path: no sub-agent spawn, no second context, and the tool is callable in the same turn it is selected.
+
+Two prerequisites, both required:
+
+1. A runtime switch. Any one of these turns it on:
+   - the master switch `KIMI_CODE_EXPERIMENTAL_FLAG=1` (enables every experimental flag, `tool-select` included);
+   - the per-flag switch `KIMI_CODE_EXPERIMENTAL_TOOL_SELECT=1`;
+   - `[experimental] tool-select = true` in `config.toml`.
+2. The model declares the `dynamically_loaded_tools` capability alongside `tool_use` (the official models do; any other model needs a `[models."…"]` entry in `config.toml` that declares it).
+
+`"deferred": true` is then the per-server **enabling field**, not a third prerequisite:
+
+```json
+{
+  "mcpServers": {
+    "github": { "url": "https://mcp.example.com/mcp", "deferred": true }
+  }
+}
+```
+
+Missing either prerequisite leaves the server inline and silent; missing the field leaves it inline. Verify with `prompt-audit`: the server's tool group must disappear from the resident tool definitions, and a `<tools_added>` system reminder must list its tool names on the first turn.
+
+**Do not combine deferral with a `disallowedTools: [mcp__*]` denylist.** Measured on CLI 0.43.1: a denied MCP tool is filtered out of the *loadable* catalogue as well, so it never appears in `<tools_added>` and `select_tools` answers `Unknown tool: …`. The capability becomes unreachable rather than merely delegated. Pick one path per server — native deferral with no denylist entry for that server, or inline + denylist + delegation.
+
+### 3.2 Delegate to specialist sub-agents (fallback)
+
+The main agent drops the tool (`disallowedTools`) and a custom sub-agent carries it. Use this when deferral is unavailable (a model without `dynamically_loaded_tools`, a server that must stay inline) or when the sub-agent's distillation matters as much as the schema saving. The schema then only occupies the sub-agent's own context:
 
 ```yaml
 # agents/agent.md (main, override)
@@ -59,24 +85,12 @@ Trade-offs:
 - Every use of the excluded capability now costs a sub-agent spawn (its own prompt + tokens + latency). Do this for tools that are heavy and occasional, not for tools used every turn.
 - Sub-agent results come back as text; media and huge outputs should be distilled by the sub-agent before returning.
 - Write the sub-agent's `description` as routing advice — it is what the main agent reads when deciding to delegate.
+- A sub-agent's `tools` list is not a hard boundary: the runtime still injects `select_tools` into it, so read it as "these and the loader", not as an exhaustive allow-list.
+- `disallowedTools` matches non-MCP names by exact membership and MCP names (`mcp__*`) by glob — `Tower*` would match nothing.
 
-### 3.2 Defer MCP tools (experimental)
+### 3.3 Moving tools out also helps caching
 
-Kimi Code CLI can keep an MCP server's tools out of the top-level list and load them on demand via `select_tools`. Three prerequisites, all required:
-
-1. `KIMI_CODE_EXPERIMENTAL_TOOL_SELECT=1` (or `[experimental] tool-select = true` in `config.toml`)
-2. The model declares the `dynamically_loaded_tools` capability (official models do; others need `capabilities` in `config.toml`)
-3. The server entry in `mcp.json` sets `"deferred": true`
-
-```json
-{
-  "mcpServers": {
-    "github": { "url": "https://mcp.example.com/mcp", "deferred": true }
-  }
-}
-```
-
-If any prerequisite is missing, `deferred` is silently ignored and tools load inline. Verify with `prompt-audit`: the server's tool group should disappear from the resident tool definitions.
+Prompt caching keys on a stable request prefix, and the tool array sits at the front of it. A tool list that shifts mid-session — an MCP server reconnecting, a schema appearing when it was absent before — invalidates everything cached behind it. Curating the resident tools (deferring MCP schemas, denying the low-frequency heavy ones) keeps the prefix stable and cache hits predictable, which is worth more than the one-off character saving. Native deferral is built for this: deferred definitions stay out of the cacheable prefix rather than being reordered inside it.
 
 ## 4. Decide what stays resident
 

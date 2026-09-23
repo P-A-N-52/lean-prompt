@@ -13,7 +13,7 @@ Apply three layers; each holds only what the current decision needs:
 Working rules:
 
 - Audit before optimizing: run the `prompt-audit` skill to see what actually occupies the context.
-- Tool definitions usually dominate the resident prompt — exclude rarely used tools from the main agent (`disallowedTools`) and delegate to sub-agents that carry them.
+- Tool definitions usually dominate the resident prompt. Prefer native deferral (`mcp.json` `"deferred": true` + `select_tools`) where the model supports it; otherwise exclude rarely used tools from the main agent (`disallowedTools`) and delegate to sub-agents that carry them.
 - AGENTS.md is an index, not a manual: link to docs, don't paste them.
 - A plugin `systemPrompt` or `sessionStart.skill` is resident text on every session — keep it short or don't use it.
 - Delegation costs tokens too; don't spawn a sub-agent for a trivial lookup.
