@@ -68,7 +68,7 @@ router 档是**纯路由者**：它没有 `Edit`/`Write`/`Glob`/`Grep`/`WebSearc
 
 任务控制类工具（`TaskList`/`TaskOutput`/`TaskStop`）与 `AskUserQuestion`、`TodoList` 在 **balanced 档保留**：`TaskStop` 是取消后台任务的唯一手段，摘掉后台任务就没法取消；计划模式用户实际在用，所以 `EnterPlanMode`/`ExitPlanMode` 也保留。这些连同计划模式**只有 router 档去掉**，因为 router 不自己执行任何东西。
 
-一个实测到的边界：「功能消失」指的是**这个主 Agent 的**工具快照里不再有它。内建 `coder` 子档实测仍有 30 个工具，其中包含 `Cron*` 与 `WaitFor`（`session_fee0d796` 的 `agent-0`）——同一台机器上别的 profile 不受本档影响。balanced 档的提示词已明确要求不要为这类请求绕道委派，本插件也不把这条路径当作支持用法。
+一个实测到的边界：「功能消失」指的是**这个主 Agent 的**工具快照里不再有它。内建 `coder` 子档实测仍有 29 个工具（19 内建 + 10 个 `mcp__kimi-cu__*`），其中包含 `Cron*` 与 `WaitFor`（`session_fee0d796` 的 `agent-0`）——同一台机器上别的 profile 不受本档影响。balanced 档的提示词已明确要求不要为这类请求绕道委派，本插件也不把这条路径当作支持用法。
 
 改完 `agents/*.md` 后需要 `/plugins install` 重装 + `/reload`，并**新建会话**生效。
 

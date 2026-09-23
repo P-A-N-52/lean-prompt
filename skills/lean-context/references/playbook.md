@@ -107,7 +107,7 @@ A reminder a sub-agent schedules is the sub-agent's, not the session's; a goal i
 
 Which members to cut is a frequency call, not a class rule — plan mode sits in the same class, but users reach for it constantly, so cutting it usually costs more than its schema saves.
 
-Measured caveat (CLI 0.43.1): a denied tool disappears from the **main** agent only. The built-in `coder` sub-profile still resolved to 30 tools including `CronCreate`, `CronDelete`, `CronList` and `WaitFor`. Denying them upstream removes them from that prompt; it does not remove them from every profile on disk.
+Measured caveat (CLI 0.43.1): a denied tool disappears from the **main** agent only. The built-in `coder` sub-profile still resolved to 29 tools (19 built-in + 10 `mcp__kimi-cu__*`) including `CronCreate`, `CronDelete`, `CronList` and `WaitFor`. Denying them upstream removes them from that prompt; it does not remove them from every profile on disk.
 
 ## 4. Decide what stays resident
 
