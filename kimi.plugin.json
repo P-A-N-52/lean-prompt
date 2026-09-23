@@ -1,0 +1,15 @@
+{
+  "name": "lean-prompt",
+  "version": "0.1.0",
+  "description": "Shrink the resident prompt: heavy tool schemas move to specialist sub-agents, knowledge moves to on-demand skills.",
+  "keywords": ["prompt", "context", "progressive-disclosure", "token-budget"],
+  "license": "MIT",
+  "agents": "./agents/",
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "interface": {
+    "displayName": "Lean Prompt",
+    "shortDescription": "Progressive disclosure for tools and knowledge",
+    "longDescription": "Removes MCP tool schemas and media reading from the main agent's resident prompt and routes that work to specialist sub-agents; ships a prompt-audit skill that measures what actually occupies your context."
+  }
+}
