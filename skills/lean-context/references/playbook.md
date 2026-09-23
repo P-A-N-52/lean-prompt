@@ -85,7 +85,7 @@ Trade-offs:
 - Every use of the excluded capability now costs a sub-agent spawn (its own prompt + tokens + latency). Do this for tools that are heavy and occasional, not for tools used every turn.
 - Sub-agent results come back as text; media and huge outputs should be distilled by the sub-agent before returning.
 - Write the sub-agent's `description` as routing advice — it is what the main agent reads when deciding to delegate.
-- A sub-agent's `tools` list is not a hard boundary: the runtime still injects `select_tools` into it, so read it as "these and the loader", not as an exhaustive allow-list.
+- A sub-agent's `tools` list is not a hard boundary for `select_tools`, but it is for everything else. The loader is gated by `disallowedTools`, not by the `tools` allow-list, so whenever tool-select is active for that agent's own model — the model declares `dynamically_loaded_tools` and `tool_use`, and the flag is on — the runtime adds `select_tools` on top of the declared tools. Measured on `kimi-code/k3`: a sub-agent declaring `[mcp__*, Read, Grep, Glob]` resolved to `[Glob, Grep, Read, select_tools]`. An agent on a model without that capability gets exactly its declared list and no loader — measured on `deepseek/deepseek-flash`, where `web-researcher` resolved to `[FetchURL, Read, WebSearch]` and `mcp-worker` to its declared MCP tools plus `Read/Grep/Glob`. Do not read the list as an exhaustive allow-list for the loader; do rely on it for the rest.
 - `disallowedTools` matches non-MCP names by exact membership and MCP names (`mcp__*`) by glob — `Tower*` would match nothing.
 
 ### 3.3 Moving tools out also helps caching

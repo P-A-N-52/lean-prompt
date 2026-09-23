@@ -10,9 +10,9 @@ disallowedTools:
   # Batch orchestration is low-frequency; a single `Agent` delegation stays.
   - AgentSwarm
   # Tower orchestration tools are hidden by the default profile, but a custom
-  # agent file re-exposes them (measured: 11 tools, 16,747 chars on CLI 0.43.1).
-  # Exact names only — wildcards match MCP tools exclusively. Remove these
-  # entries if you use /tower.
+  # agent file re-exposes them (measured: 11 tools, 16,601 chars under
+  # prompt_audit.py's compact-JSON unit). Exact names only — wildcards match
+  # MCP tools exclusively. Remove these entries if you use /tower.
   - TowerFinding
   - TowerInbox
   - TowerInit

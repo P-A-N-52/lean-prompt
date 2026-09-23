@@ -29,6 +29,8 @@ Kimi Code 插件：缩小常驻 prompt，把重型工具定义和长篇知识改
 
 被移出的部分：10 个 `mcp__kimi-cu__*`（8,151 字符）、`ReadMediaFile`（4,120）、`AgentSwarm`（4,508）、Tower 工具 3 个（TowerInit/TowerStatus/TowerTeardown，共 3,532）；新增的常驻路由规则 +1,699 字符，所以净省略小于工具定义的减少量。收益随 MCP server 数量增长——每多一个 server，它的全部 schema 都不再常驻。
 
+本页所有字符数都是 utf-8 compact JSON（`prompt_audit.py` 的 `compact()`，即 `json.dumps(..., ensure_ascii=False, separators=(',', ':'))`）。同样一份工具定义改用 ascii-escaped（`ensure_ascii=True`）会略大——例如 11 个 Tower 工具是 16,601 对 16,747。对比数字时注意口径。
+
 ## 安装
 
 在 Kimi Code TUI 中：
@@ -59,7 +61,7 @@ python3 ~/.kimi-code/plugins/managed/lean-prompt/skills/prompt-audit/scripts/pro
 
 - `--agent` / `--agent-file` 启动（Explicit）；
 - 项目级 `.kimi-code/agents/agent.md` 或 `.agents/agents/agent.md` 声明了 `override: true`（Project）；
-- `config.toml` 的 `extraAgentDirs` 指向的目录里有同名 agent 文件（Extra）；
+- `config.toml` 的 `extra_agent_dirs`（TOML 字段用 snake_case，这是官方文档与 CLI 自己回写配置时的写法；实测 camelCase 也能被接受，但按文档写 snake_case）指向的目录里有同名 agent 文件（Extra）；
 - 用户级 `~/.kimi-code/agents/agent.md` 或 `~/.agents/agents/agent.md`（User）；
 - `~/.kimi-code/SYSTEM.md`：**未验证，以实测为准**。官方只说「项目级同名 override 文件与 `--agent-file` 排在 SYSTEM.md 之前」，同时说 agent 文件里的 `${base_prompt}` 会展开为有效默认（内建默认，或你的 SYSTEM.md）。按字面读，SYSTEM.md 存在时插件的 `agent.md` 可能**仍然是主 Agent**（denylist 继续生效），只是提示词来自 SYSTEM.md——也就是瘦身不一定失效。装完请用 `/lean-prompt:audit` 实测确认。
 
@@ -78,7 +80,7 @@ Kimi Code 有实验性的 MCP 延迟加载：`mcp.json` 里给 server 加 `"defe
 - **为主 Agent 加回某个工具**：编辑 `agents/agent.md` 的 `disallowedTools`（删除对应行），然后 `/plugins install` 重装 + `/reload`。
 - **加回 `AgentSwarm`**（批量并行编排）：删掉 `- AgentSwarm` 一行；它的 schema 实测 4,508 字符，低频，建议确实要用时再加回。
 - **加回 `ReadMediaFile`**：删掉该行（实测 4,120 字符），加回后主 Agent 可直接读图，不必再走 `media-analyst`。
-- **使用 `/tower` 多代理模式**：自定义 Agent 文件会把默认隐藏的 Tower 编排工具重新暴露——CLI 0.43.1 下共 **11 个**（本次实测合计 16,747 字符；M3 审查报告在另一个会话对其中 8 个测得 13,069 字符，差值是 CLI 版本/会话类型导致，两者都远不是旧文写的「约 13.4k」）。其中 TowerInit/TowerStatus/TowerTeardown 连默认 profile 都不隐藏，8→11 的补充就是为此。本插件已一并排除；用 `/tower` 时请从 `disallowedTools` 删掉这些 `Tower*` 条目。
+- **使用 `/tower` 多代理模式**：自定义 Agent 文件会把默认隐藏的 Tower 编排工具重新暴露——CLI 0.43.1 下共 **11 个**，实测合计 **16,601 字符**（utf-8 compact JSON，即本仓库 `prompt_audit.py` 的口径）。其中 TowerInit/TowerStatus/TowerTeardown 连默认 profile 都不隐藏：M3 审查报告只量到 8 个（13,069 字符，同一口径），差值 3,532 正好是这 3 个。本插件已一并排除；用 `/tower` 时请从 `disallowedTools` 删掉这些 `Tower*` 条目。
 - **注意排除项的写法**：`disallowedTools` 只有 `mcp__*` 这类 MCP 名字支持通配，非 MCP 名字必须**逐个精确列出**（写 `Tower*` 不会匹配任何东西）。CLI 新增工具时会静默漏出，留意上面这些实测数字是否漂移。
 - **经常直连某个 MCP server**：见上一节，按 server 二选一。
 
