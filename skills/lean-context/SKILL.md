@@ -13,10 +13,10 @@ Apply three layers; each holds only what the current decision needs:
 Working rules:
 
 - Audit before optimizing: run the `prompt-audit` skill to see what actually occupies the context.
-- Tool definitions usually dominate the resident prompt. Prefer native deferral (`mcp.json` `"deferred": true` + `select_tools`) where the model supports it; otherwise exclude rarely used tools from the main agent (`disallowedTools`) and delegate to sub-agents that carry them.
+- Tool definitions usually dominate the resident prompt. Prefer native deferral (`mcp.json` `"deferred": true` + `select_tools`) where the model supports it; otherwise exclude rarely used tools from the main agent (`disallowedTools`) and delegate to sub-agents that carry them. Session-state tools (`Cron*`, goal mode, `WaitFor`) cannot be delegated — for those, denying the tool *is* removing the feature, so make that trade explicit.
 - AGENTS.md is an index, not a manual: link to docs, don't paste them.
 - A plugin `systemPrompt` or `sessionStart.skill` is resident text on every session — keep it short or don't use it.
 - Delegation costs tokens too; don't spawn a sub-agent for a trivial lookup.
 - Context compaction shrinks content after it entered; progressive disclosure keeps it out in the first place. They are complements, not substitutes.
 
-For the full methodology — AGENTS.md indexing patterns, MCP `deferred: true` setup, sub-agent design trade-offs — read `references/playbook.md` in this skill's directory.
+For the full methodology — AGENTS.md indexing patterns, MCP `deferred: true` setup, sub-agent design trade-offs, and which session-state tools can only be cut rather than delegated — read `references/playbook.md` in this skill's directory.

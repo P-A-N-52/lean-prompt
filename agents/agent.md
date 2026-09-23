@@ -1,6 +1,6 @@
 ---
 name: agent
-description: Lean main agent — MCP schemas, media reading and batch orchestration are delegated to specialist sub-agents
+description: Lean main agent — MCP schemas, media reading and batch orchestration are delegated to specialist sub-agents; low-frequency session-state features (Cron*/Goal*/WaitFor) are cut
 override: true
 disallowedTools:
   # MCP tool schemas are usually the largest resident block. Delegating them to
@@ -24,6 +24,29 @@ disallowedTools:
   - TowerSpawn
   - TowerStatus
   - TowerTeardown
+  # --- Session-state features cut in v0.3. There is no delegation path for
+  # --- them: they act on the calling session, so denying them removes the
+  # --- feature outright. Each entry says what it did and how to add it back.
+  # Creates a scheduled prompt (`/cron` style reminder). Add back: delete this line.
+  - CronCreate
+  # Cancels a scheduled prompt. Add back: delete this line.
+  - CronDelete
+  # Lists scheduled prompts. Add back: delete this line.
+  - CronList
+  # Defines a goal-mode objective (`/goal`). Add back: delete this line.
+  - CreateGoal
+  # Reads the current goal-mode objective. Add back: delete this line.
+  - GetGoal
+  # Sets the goal's token/time budget. Add back: delete this line.
+  - SetGoalBudget
+  # Updates goal status or progress. Add back: delete this line.
+  - UpdateGoal
+  # Waits for background tasks without ending the turn. Add back: delete this line.
+  - WaitFor
+  # --- Kept on purpose: plan mode and task/question control are used often
+  # --- enough that cutting them costs more than their schemas save.
+  # EnterPlanMode / ExitPlanMode / AskUserQuestion / TodoList / TaskList /
+  # TaskOutput / TaskStop all stay loaded.
 ---
 
 ${base_prompt}
@@ -40,5 +63,6 @@ This runtime keeps the resident prompt small: heavy tool schemas are deliberatel
 - A task that would fan out into many parallel agents — do it with a few sequential `Agent` calls instead of `AgentSwarm`.
 - When a task needs a detailed procedure or spec, invoke the matching Skill instead of pasting long documents into the conversation.
 - When the user asks how large the prompt/context is or what occupies it, use the `prompt-audit` skill.
+- Scheduling/reminders, goal mode and waiting on background tasks are deliberately **not loaded** here — they act on this session and cannot be delegated. If the user asks for one, say the feature is not available in this profile and point at the README's 档位 table instead of improvising a workaround.
 
 Delegation has its own token cost. For a single trivial lookup that your remaining tools can handle, answer directly instead of spawning a sub-agent.

@@ -34,7 +34,7 @@ Concretely:
 
 ## 3. Move tool schemas out of the main agent
 
-Every tool exposed to an agent costs its `name + description + parameter schema` on every request. Two levers, in this order:
+Every tool exposed to an agent costs its `name + description + parameter schema` on every request. Three dispositions, in this order — the first two move the work, the third removes it:
 
 ### 3.1 Defer MCP tools (native, preferred)
 
@@ -92,6 +92,23 @@ Trade-offs:
 
 Prompt caching keys on a stable request prefix, and the tool array sits at the front of it. A tool list that shifts mid-session — an MCP server reconnecting, a schema appearing when it was absent before — invalidates everything cached behind it. Curating the resident tools (deferring MCP schemas, denying the low-frequency heavy ones) keeps the prefix stable and cache hits predictable, which is worth more than the one-off character saving. Native deferral is built for this: deferred definitions stay out of the cacheable prefix rather than being reordered inside it.
 
+### 3.4 Cut or move? Session state has nowhere to go
+
+Sections 3.1 and 3.2 share a hidden requirement: the work has a **destination**. Deferral re-loads the schema on demand; delegation hands the task to another context that has the schema. Both work because the capability itself is stateless — it reads or changes something outside the session and returns a result.
+
+A different class of tool has no destination: it acts on the **calling session**.
+
+| Class | Examples | Disposition |
+|---|---|---|
+| Stateless capability | an MCP server, media reading, web fetch, file edits | Defer or delegate — the work happens elsewhere and comes back as a result |
+| Session state | `CronCreate`/`CronDelete`/`CronList` (scheduled prompts), `CreateGoal`/`GetGoal`/`SetGoalBudget`/`UpdateGoal` (goal mode), `WaitFor` (waiting on background work), `EnterPlanMode`/`ExitPlanMode` | **Cut only** — no sub-agent can produce the outcome |
+
+A reminder a sub-agent schedules is the sub-agent's, not the session's; a goal it sets is its own; a wait it performs blocks a context the user never sees. Nothing distilled comes back to the caller. So the only way to remove the schema is to remove the feature — `disallowedTools` — and the user trades a capability away for characters. That trade must be **explicit**: write down which features were cut, say the capability is gone rather than "delegated", and give the one-line way back (delete the entry). Do not describe a session-state tool as delegated; nothing is behind that word.
+
+Which members to cut is a frequency call, not a class rule — plan mode sits in the same class, but users reach for it constantly, so cutting it usually costs more than its schema saves.
+
+Measured caveat (CLI 0.43.1): a denied tool disappears from the **main** agent only. The built-in `coder` sub-profile still resolved to 29 tools (19 built-in + 10 `mcp__kimi-cu__*`) including `CronCreate`, `CronDelete`, `CronList` and `WaitFor`. Denying them upstream removes them from that prompt; it does not remove them from every profile on disk.
+
 ## 4. Decide what stays resident
 
 Keep resident only what must hold **even when the model forgets everything else**: safety boundaries, output contract, routing rules. Everything explanatory ("how to do X") is a candidate for a skill.
@@ -111,4 +128,4 @@ A quick test: if a paragraph only matters for one kind of task, it does not belo
 1. `prompt-audit` on a session before the change — note resident chars and first-request input tokens.
 2. Start a **new** session after the change (prompts are bound at bind time; resumed sessions may keep the old profile).
 3. `prompt-audit --compare <oldSessionDir> <newSessionDir>`.
-4. Also verify behavior, not just size: can the agent still reach the excluded capability through the intended path (delegation or `select_tools`)?
+4. Also verify behavior, not just size: can the agent still reach the excluded capability through the intended path (delegation or `select_tools`)? For a **cut** feature there is no path — assert the tool is absent from the new session's `llm.tools_snapshot` and that the profile still holds the ones you chose to keep.
