@@ -1,6 +1,6 @@
 {
   "name": "lean-prompt",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Shrink the resident prompt: heavy tool schemas move to specialist sub-agents, knowledge moves to on-demand skills.",
   "keywords": ["prompt", "context", "progressive-disclosure", "token-budget"],
   "license": "MIT",
