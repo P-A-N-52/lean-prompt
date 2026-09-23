@@ -615,15 +615,36 @@ class HttpUpstream(Upstream):
     def __init__(self, name, spec, protocol_version):
         super().__init__(name, spec, protocol_version)
         self.session_id = None
+        self.session_lost = ""
 
     def _close_session(self):
         self.session_id = None
         self._fail_pending("upstream '%s' is offline: session closed" % self.name)
 
+    def _session_lost(self, reason):
+        """Record that the session no longer exists, so the next request re-initializes.
+
+        Without this the upstream would look online forever: `_alive()` cannot see a
+        server-side session expiry, and every later request would keep failing.
+        """
+        self.session_id = None
+        self.session_lost = reason
+        self.status = "offline"
+        self.detail = reason
+
     def _handshake(self):
         self.session_id = None
+        self.session_lost = ""
         self._request("initialize", self._init_params(), self.startup_timeout)
         self._notify("notifications/initialized")
+        if self.session_lost:
+            # The server took our initialize, handed out a session, then refused it. Fail
+            # here, where the cause is known, rather than on the next request — which
+            # would go out with no session id and report a misleading error.
+            raise UpstreamOffline(
+                "upstream '%s' refused the session it had just established (HTTP 404)"
+                % self.name
+            )
         self._adopt_tools(self._request("tools/list", {}, self.startup_timeout))
 
     def _request(self, method, params, timeout):
@@ -666,8 +687,17 @@ class HttpUpstream(Upstream):
                 detail = exc.read().decode("utf-8", "replace")[:300]
             except (OSError, ValueError):
                 pass
-            if exc.code == 404 and self.session_id:
-                self.session_id = None
+            if exc.code == 404:
+                # Streamable HTTP answers 404 when there is no session behind the URL any
+                # more — expired server-side, or the server restarted — which is the
+                # spec's cue for the client to send a fresh initialize. The request was
+                # rejected rather than processed, so it is undelivered: the caller may
+                # re-initialize and send it once, and the upstream is no longer online.
+                self._session_lost("session gone (HTTP 404); re-initializing")
+                raise UpstreamOffline(
+                    "upstream '%s' answered HTTP 404 — no session behind this URL "
+                    "(expired or unknown): %s" % (self.name, detail)
+                )
             raise UpstreamProtocolError(
                 exc.code, "upstream '%s' answered HTTP %s: %s" % (self.name, exc.code, detail)
             )

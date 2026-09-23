@@ -15,6 +15,7 @@ import sys
 import tempfile
 import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SERVICES = os.path.dirname(HERE)
@@ -22,6 +23,10 @@ SERVER = os.path.join(SERVICES, "server.py")
 FIXTURE_STDIO = os.path.join(HERE, "fixture_stdio_mcp.py")
 FIXTURE_HTTP = os.path.join(HERE, "fixture_http_mcp.py")
 COMPACT = {"ensure_ascii": False, "separators": (",", ":")}
+
+sys.path.insert(0, HERE)
+
+from fixture_core import handle as fixture_handle  # noqa: E402
 
 
 def compact(value):
@@ -303,6 +308,104 @@ class HttpFixture:
             self.proc.stderr.close()
         except OSError:
             pass
+
+
+class ExpiringSessionHttpFixture:
+    """An HTTP MCP fixture whose session can be terminated on command.
+
+    `fixture_http_mcp.py` stays a cooperative server with one always-valid session.
+    This one exists for the streamable-HTTP rule the proxy has to survive: a request
+    carrying a terminated session id is answered 404, which per spec tells the client
+    to send a fresh initialize. `initializes` counts how often the client
+    re-established the session and `dispatched` records the tool calls that actually
+    reached a tool, so a test can tell recovery from a silent re-run.
+    """
+
+    def __init__(self, reject_sessions=False):
+        self._lock = threading.Lock()
+        self.session_id = None
+        self.session_seq = 0
+        self.initializes = 0
+        self.dispatched = []
+        self.reject_sessions = reject_sessions
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), _expiring_handler(self))
+        self.url = "http://127.0.0.1:%d/mcp" % self._server.server_address[1]
+        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+
+    def expire(self):
+        """Terminate the session: later requests carrying its id are answered 404."""
+        with self._lock:
+            self.session_id = None
+
+    def close(self):
+        self._server.shutdown()
+        self._server.server_close()
+
+
+def _expiring_handler(owner):
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, fmt, *args):
+            pass
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                message = json.loads(self.rfile.read(length).decode("utf-8"))
+            except ValueError:
+                self._send(400, compact({"error": "body is not JSON"}).encode("utf-8"))
+                return
+            method = message.get("method")
+            if method == "initialize":
+                with owner._lock:
+                    owner.session_seq += 1
+                    owner.session_id = "expiring-session-%d" % owner.session_seq
+                    owner.initializes += 1
+                    session_id = owner.session_id
+                self._respond(message, {"Mcp-Session-Id": session_id})
+                return
+            session_id = self.headers.get("Mcp-Session-Id")
+            if not session_id:
+                self._send(400, compact({"error": "missing Mcp-Session-Id"}).encode("utf-8"))
+                return
+            with owner._lock:
+                current = owner.session_id
+                reject = owner.reject_sessions
+            if reject or session_id != current:
+                # A terminated (or never-accepted) session, exactly as the spec describes it.
+                self._send(
+                    404, compact({"error": "session %s is gone" % session_id}).encode("utf-8")
+                )
+                return
+            if not self.headers.get("MCP-Protocol-Version"):
+                self._send(
+                    400, compact({"error": "missing MCP-Protocol-Version"}).encode("utf-8")
+                )
+                return
+            self._respond(message, {})
+
+        def _respond(self, message, extra):
+            if message.get("id") is None:
+                self._send(202, b"", extra)
+                return
+            if message.get("method") == "tools/call":
+                with owner._lock:
+                    owner.dispatched.append((message.get("params") or {}).get("name"))
+            body = compact(fixture_handle(message)).encode("utf-8")
+            self._send(200, body, extra)
+
+        def _send(self, status, body, extra=None):
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            for key, value in (extra or {}).items():
+                self.send_header(key, value)
+            self.end_headers()
+            if body:
+                self.wfile.write(body)
+
+    return Handler
 
 
 class Workdir:

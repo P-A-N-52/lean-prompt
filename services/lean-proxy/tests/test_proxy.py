@@ -37,6 +37,7 @@ from fixture_core import PNG_BASE64  # noqa: E402
 from mcp_client import (  # noqa: E402
     Client,
     ClientError,
+    ExpiringSessionHttpFixture,
     FIXTURE_STDIO,
     HttpFixture,
     Workdir,
@@ -604,6 +605,71 @@ def test_http_upstream_going_away_is_marked_offline():
         described = meta(harness.client, "describe", {"name": "echo"})["structuredContent"]
         assert described["upstream_status"] == "offline"
     fixture.close()
+
+
+@check
+def test_http_session_expiry_recovers_without_rerunning_the_call():
+    fixture = ExpiringSessionHttpFixture()
+    try:
+        with Harness({"http-fixture": {"url": fixture.url, "transport": "http"}}) as harness:
+            assert harness.tool_result("echo", {"text": "one"})["content"][0]["text"] == "echo:one"
+            assert fixture.initializes == 1, fixture.initializes
+
+            # The server-side session is gone, so the proxy's session id is now stale.
+            fixture.expire()
+
+            # The spec answers that with 404, which means the request was rejected, not
+            # processed — so the proxy may re-initialize and send it once, and the
+            # caller sees an ordinary success rather than a wedged upstream.
+            assert harness.tool_result("echo", {"text": "two"})["content"][0]["text"] == "echo:two"
+            assert fixture.initializes == 2, "the proxy did not re-establish the session"
+            assert fixture.dispatched == ["echo", "echo"], fixture.dispatched
+            assert harness.server_status("http-fixture")["status"] == "online"
+
+            # The re-established session keeps working, and is not re-created per call.
+            assert (
+                harness.tool_result("echo", {"text": "three"})["content"][0]["text"]
+                == "echo:three"
+            )
+            assert fixture.initializes == 2, fixture.initializes
+    finally:
+        fixture.close()
+
+
+@check
+def test_http_upstream_that_keeps_rejecting_the_session_is_reported_offline():
+    fixture = ExpiringSessionHttpFixture()
+    try:
+        with Harness({"http-fixture": {"url": fixture.url, "transport": "http"}}) as harness:
+            assert harness.tool_result("echo", {"text": "one"})["content"][0]["text"] == "echo:one"
+
+            # Now even a freshly initialized session is rejected, so there is no recovery
+            # path. The honest answer is an error that says so — not an upstream that
+            # keeps reporting itself online while every call fails.
+            fixture.reject_sessions = True
+            error = expect_error(
+                harness.client, "call", {"name": "echo", "arguments": {"text": "x"}}, -32603
+            )
+            assert error["data"]["reason"] == "offline", error
+            assert "404" in error["message"], error
+            status = harness.server_status("http-fixture")
+            assert status["status"] == "offline", status
+            assert "404" in status["detail"], status
+
+            # Its declarations survive, so the tool is still describable while it is down.
+            described = meta(harness.client, "describe", {"name": "echo"})["structuredContent"]
+            assert described["upstream_status"] == "offline"
+            assert harness.catalog()[0].count("OFFLINE") == 1
+
+            # And once the server accepts sessions again, no restart of the proxy is needed.
+            fixture.reject_sessions = False
+            assert (
+                harness.tool_result("echo", {"text": "two"})["content"][0]["text"]
+                == "echo:two"
+            )
+            assert harness.server_status("http-fixture")["status"] == "online"
+    finally:
+        fixture.close()
 
 
 @check
